@@ -38,8 +38,8 @@ reddit = praw.Reddit(
     user_agent="script:Lion:v1.0 (by u/YourRedditUsername)"  # Customize this
 )
 
-# Global log queue for streaming logs to clients
-log_queue = queue.Queue()
+# Global variable to track when the last subtitle ends
+last_subtitle_end_time = 0
 
 def scrape_reddit_story():
     """
@@ -211,7 +211,7 @@ def create_social_media_overlay(text, width=1080, height=1920):
         return None
 
 def overlay_text_on_video(video, title_audio_path, story_audio_path, title, story_text, subtitles):
-    """Overlays text and audio on the provided video."""
+    global last_subtitle_end_time
     try:
         socketio.emit('log_update', {'log': "Log: Overlaying text on video..."})
 
@@ -241,8 +241,16 @@ def overlay_text_on_video(video, title_audio_path, story_audio_path, title, stor
         for start, end, words_chunk in subtitles:
             chunk_text = ' '.join(words_chunk)
 
-            # Adjust end time to avoid overlapping - reduce by a tiny bit more (e.g., 0.15 seconds)
-            adjusted_end = max(start, end - 0.15)
+            # Ensure that the new subtitle starts only after the previous one has ended
+            if last_subtitle_end_time > start:
+                start = last_subtitle_end_time
+            end = start + (end - start)
+
+            # Shorten the end time slightly to avoid overlap
+            end -= 0.1  # Reducing the end time by 0.1 seconds
+
+            # Update the global variable with the new end time
+            last_subtitle_end_time = end
 
             # Create the main text clip for subtitles
             txt_clip = mp.TextClip(
@@ -254,7 +262,7 @@ def overlay_text_on_video(video, title_audio_path, story_audio_path, title, stor
                 stroke_width=1,
                 method='caption',
                 size=(video.w - 200, None)  # Ensure subtitles fit properly
-            ).set_position('center').set_start(start).set_duration(adjusted_end - start)
+            ).set_position('center').set_start(start).set_duration(end - start)
 
             # Add the subtitle text clip to the list of clips
             txt_clips.append(txt_clip)
